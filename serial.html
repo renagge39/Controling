@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controlling</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.3/css/bulma.min.css">
+    <style>
+        #terminal {
+            height: 40px;
+            border: 1px solid #ccc;
+            overflow-y: scroll;
+            padding: 10px;
+            background-color: #222121;
+            margin-bottom: 10px;
+        }
+        .message {
+            white-space: pre-wrap; /* Memungkinkan text wrapping */
+            margin: 0; /* Menghapus margin default */
+            background-color: transparent !important;
+            color: rgb(0, 255, 76) !important;
+        }
+        .toggle-button {
+            margin: 0 5px;
+        }
+        .is-on {
+            background-color: #48c774; /* Warna hijau untuk status on */
+            color: white;
+        }
+        .is-off {
+            background-color: #f14668; /* Warna merah untuk status off */
+            color: white;
+        }
+        .d-flex {
+            display: flex;
+            align-items: center; /* Untuk vertikal center */
+        }
+        .w20 {
+            width: 20%;
+        }
+        .w80 {
+            width: 80%;
+        }
+        .w100 {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">Controlling</h1>
+        <div class="d-flex">
+            <button id="connectButton" class="button is-primary w20">Hubungkan</button>
+            <div id="connectionStatus" class="w20" style="margin-left: 10px;">Belum terhubung</div> <!-- Elemen untuk status koneksi -->
+            <div class="field is-grouped w80">
+                <div class="control is-expanded">
+                    <input type="text" id="message" class="input" placeholder="Kirim pesan..." autofocus>
+                </div>
+            </div>
+        </div>
+        <div id="terminal" class="box"></div>
+        
+<div>
+    <title>Action</title>
+    <div class="columns">
+        <div class="column "> 
+            <div class="control is-flex pt-5">
+            <input class="input" type="text" id="newButtonName" placeholder="Tambah Tombol">
+            <button class="button is-link is-full " onclick="addButtonFromForm()">+</button>
+                
+        </div>
+           
+        </div>
+        <hr>
+        <div class="column is-four-fifths">  <div class="buttons is-bordered pt-5" id="buttonContainer"></div> <!-- Kontainer tombol -->
+    </div>
+      </div>
+ 
+    
+   
+</div>
+       
+        <!-- Form untuk menambahkan tombol baru -->
+        
+    </div>
+
+    <script>
+        let port;
+        const terminal = document.getElementById('terminal');
+        const messageInput = document.getElementById('message');
+        const connectButton = document.getElementById('connectButton');
+        const connectionStatus = document.getElementById('connectionStatus'); // Ambil elemen status koneksi
+        const buttonContainer = document.getElementById('buttonContainer'); // Ambil elemen kontainer tombol
+
+        // Status tombol
+        const buttonStatus = {};
+
+        // Fungsi untuk menghubungkan ke port serial
+        async function connect() {
+            port = await navigator.serial.requestPort();
+            await port.open({ baudRate: 9600 });
+            connectionStatus.textContent = `Terhubung ke: ${port.getInfo().usbVendorId} ${port.getInfo().usbProductId}`; // Tampilkan info koneksi
+            readLoop();
+        }
+
+        // Fungsi untuk membaca data dari port
+        async function readLoop() {
+            const decoder = new TextDecoderStream();
+            const readableStreamClosed = port.readable.pipeTo(decoder.writable);
+            const reader = decoder.readable.getReader();
+
+            let receivedData = ''; // Untuk menyimpan data yang diterima
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    break;
+                }
+                receivedData += value; // Menyimpan data yang diterima
+                if (receivedData.includes('\n')) { // Jika ada karakter newline
+                    const messages = receivedData.split('\n'); // Pisahkan berdasarkan newline
+                    for (let i = 0; i < messages.length - 1; i++) { // Tambahkan semua pesan kecuali yang terakhir
+                        if (messages[i]) { // Cek apakah pesan tidak kosong
+                            const messageElement = document.createElement('div');
+                            messageElement.className = 'message';
+                            messageElement.textContent = messages[i];
+                            terminal.appendChild(messageElement);
+                        }
+                    }
+                    receivedData = messages[messages.length - 1]; // Simpan pesan yang belum lengkap
+                }
+                terminal.scrollTop = terminal.scrollHeight; // Scroll ke bawah
+            }
+        }
+
+        // Mengirim pesan ke port serial
+        async function sendMessage(message) {
+            const writer = port.writable.getWriter();
+            const data = new TextEncoder().encode(message + '\n');
+            await writer.write(data);
+            writer.releaseLock();
+        }
+
+        // Fungsi toggle untuk tombol
+        function toggleMessage(device) {
+            buttonStatus[device] = !buttonStatus[device]; // Toggle status
+            const button = document.getElementById(`button${device}`);
+            if (buttonStatus[device]) {
+                button.classList.add('is-on');
+                button.classList.remove('is-off');
+                button.textContent = `${device} On`;
+                sendMessage(`${device}On`); // Kirim pesan ke serial untuk "On"
+            } else {
+                button.classList.add('is-off');
+                button.classList.remove('is-on');
+                button.textContent = `${device} Off`;
+                sendMessage(`${device}Off`); // Kirim pesan ke serial untuk "Off"
+            }
+        }
+
+        // Fungsi untuk menambahkan tombol baru
+        function addButton(device) {
+            if (buttonStatus[device] !== undefined) {
+                alert('Tombol dengan nama ini sudah ada!'); // Cek jika tombol sudah ada
+                return;
+            }
+
+            buttonStatus[device] = false; // Set status awal ke off
+
+            // Buat elemen tombol
+            const button = document.createElement('button');
+            button.className = 'button toggle-button is-off';
+            button.id = `button${device}`;
+            button.textContent = `${device} Off`;
+            button.addEventListener('click', () => toggleMessage(device)); // Event listener untuk toggle
+
+            // Tambahkan tombol ke kontainer
+            buttonContainer.appendChild(button);
+        }
+
+        // Fungsi untuk menambahkan tombol dari form
+        function addButtonFromForm() {
+            const newButtonName = document.getElementById('newButtonName').value.trim();
+            if (newButtonName) {
+                addButton(newButtonName); // Panggil fungsi addButton dengan nama tombol yang dimasukkan
+                document.getElementById('newButtonName').value = ''; // Kosongkan input setelah menambahkan
+            } else {
+                alert('Nama tombol tidak boleh kosong!'); // Validasi jika input kosong
+            }
+        }
+
+        // Event listener untuk tombol hubungkan
+        connectButton.addEventListener('click', connect);
+
+        // Mengirim pesan saat menekan Enter
+        messageInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                const message = messageInput.value;
+                if (message) {
+                    sendMessage(message);
+                    messageInput.value = ''; // Kosongkan input setelah mengirim
+                }
+            }
+        });
+
+        // Contoh menambahkan beberapa tombol secara dinamis
+        addButton('R1');
+        addButton('R2');
+
+        // Mengubah fungsi setMessage untuk mengirim pesan
+        window.sendMessage = sendMessage;
+    </script>
+</body>
+</html>
